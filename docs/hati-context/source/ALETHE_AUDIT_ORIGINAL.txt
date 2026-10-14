@@ -1,0 +1,391 @@
+AUDITORIA TÉCNICA PROFUNDA — ALETHE AGENTS
+Referência para o planejamento do HATI (ᚼᛅᛏᛁ)
+PARTE A — VISÃO GERAL
+1. Resumo executivo
+O que o Alethe é: um workspace desktop local-first para rodar, organizar e retomar múltiplos agentes de programação e shells em paralelo — Tauri 2 (frontend React 18/TS + backend Rust), PTYs reais, layouts persistentes, projetos/grupos/subgrupos, gerenciamento de MCP/skills compartilhados entre agentes, monitoramento de uso por provedor, orquestração multi-agente via MCP, plugins, Git/worktrees, e controle remoto LAN para celular.
+Maturidade real: projeto jovem (criado em 15/06/2026, ~4 meses até o commit auditado) com velocidade de desenvolvimento notável — v1.7.0, 873 stars, 114 forks, 66 issues+PRs abertos. A qualidade varia por camada: o backend Rust é maduro (locks bem escopados, escrita atômica, testes de invariantes, mitigações de race documentadas), o frontend evoluiu de um god-object para slices, mas a cobertura de testes de UI ainda é baixa. O projeto mantém uma autoauditoria interna honesta (docs/DIAGNOSTICO_MATURIDADE_TECNICA.md) — sinal de cultura de engenharia acima da média.
+O que importa para o HATI: o Alethe é a melhor referência funcional disponível para o produto desejado, mas (a) é licenciado AGPL-3.0-or-later — qualquer reuso de código contamina o HATI; o plano de "código e identidade próprios" é obrigatório, não opcional; (b) é Windows-first com Linux/macOS menos validados — exatamente o inverso da prioridade do usuário (Omarchy); (c) não possui Kanban nem gestão de tarefas além de uma lista de todos; (d) o acesso remoto é LAN-only sem TLS; (e) a integração profunda concentra-se em Claude Code e Codex — OpenCode é tratado majoritariamente como processo de terminal com um plugin-ponte raso, o que é uma oportunidade de diferenciação para o HATI, cuja suite de agentes é OpenCode-nativa.
+2. Versão e commit analisados
+Item	Valor
+Commit (HEAD de main)	f09c597bac056321aeae81c85e176336ca518dfe ("docs: update contributors")
+Data do commit	2026-10-12T02:57:27Z
+Data da auditoria	2026-10-13
+Versão	1.7.0 (idem em package.json, Cargo.toml, tauri.conf.json)
+Licença	AGPL-3.0-or-later + restrições de marca (TRADEMARK.md)
+Idioma dominante	TypeScript (frontend); Rust (backend)
+Repo criado em	2026-06-15
+Link permanente da árvore auditada: https://github.com/Kc1t/alethe-agents/tree/f09c597bac056321aeae81c85e176336ca518dfe — todas as citações de caminho abaixo referem-se a este commit.
+3. Stack utilizada
+Camada	Tecnologia	Por quê (evidência)
+Shell desktop	Tauri 2 (tauri = "2", features image-png, unstable)	binário pequeno, WebView nativa por OS; bundle.longDescription autodeclara "Windows-first terminal multiplexer GUI"
+Frontend	React 18.3, TypeScript 5.6, Vite 6	SPA única; ~30 modais; code-splitting via lazy()
+Estado	Zustand 5	store única persistida (projectsStore + slices por domínio: projectSlices, workspaceSlices, terminalSlices, slices, migrations)
+Terminal UI	xterm.js 5.5 + addons fit/search/unicode11	renderização de PTY; WebGL com budget de 4 contextos (lib/webglPool.ts — na verdade um contador, não um pool)
+PTY	portable-pty 0.8	PTYs reais multi-OS (native_pty_system, setsid no Linux, ConPTY no Windows)
+Layout	react-resizable-panels 4 + CSS grid; drag: @dnd-kit/core	painéis colapsáveis, custom grid com spans
+Persistência	JSON local (projects.json v9 + migrações), arquivos de scrollback .bin, rusqlite (somente para ler o banco do OpenCode)	 
+Async Rust	tokio (rt-multi-thread), spawn_blocking disciplinado	 
+HTTP/WS Rust	reqwest (rustls), tungstenite/tokio-tungstenite, tiny_http (listeners loopback: hooks de agente + remote HTTP), qrcode (SVG)	 
+STT	sherpa-onnx 1.13 + cpal (áudio)	ditado 100% on-device; modelo default parakeet-tdt-0.6b-v3-int8
+Segredos	keyring 3 com backends por OS (Keychain, CredMan, Secret Service)	migração de segredos do JSON para o keyring (secure_store.rs)
+Config de agentes	toml_edit (preserva comentários/ordem em ~/.codex/config.toml), serde_json preserve_order (não alphabetiza ~/.claude.json)	 
+Testes	Vitest (~436 testes), cargo test --lib + tests/orchestrator.rs (24), WebdriverIO + @wdio/tauri-service (E2E do app real)	 
+Extras	cytoscape (Graphify), mermaid (Markdown), react-markdown, sysinfo (RAM/cwd), notify (watchers), discord-rich-presence, zip/tar/sha2 (plugins/backups)	 
+4. Organização do repositório
+alethe-agents/
+├── src/                      # Frontend React/TS
+│   ├── App.tsx               # Shell: TitleBar + 3 painéis + ~30 modais + hooks de serviço
+│   ├── OrchestrationWindow.tsx  # Janela destacada do board (lê projects.json)
+│   ├── components/           # 43 dirs: WorkspaceView, TerminalPane, XTermView, HomeView,
+│   │                         # ProjectSidebar, RightSidebar, OrchestratorPane, AgentSandbox,
+│   │                         # PullRequestReview, GraphifyView, modals/ (33), ui/, icons/
+│   ├── stores/               # Zustand: projectsStore + slices, uiStore, mergeStore,
+│   │                         # agentCanvasStore, agentSandboxStore, agentCostStore,
+│   │                         # graphifyStore, mcpStore, pomodoroStore, schedulerStore, ...
+│   ├── hooks/                # useKeybindings, useRemoteControlService, useResourceSupervisor, ...
+│   ├── lib/                  # tauri.ts (~150 bindings IPC), types.ts (schema), plugins/,
+│   │                         # sessionDiscovery, sessionResume, spawnQueue, themes, i18n/...
+│   ├── plugins/              # Plugins oficiais bundados (Todo List, Git Control, Theme Pack)
+│   └── remoteChat.test.ts / securityPolicy.test.ts
+├── src-tauri/                # Backend Rust
+│   ├── src/                  # ~81 módulos: pty.rs, projects.rs, agent_events.rs, orchestrator*.rs,
+│   │                         # mcp_*.rs, skills.rs, git_control.rs, worktrees.rs, claude/codex/
+│   │                         # cursor/antigravity/opencode_sessions+usage, agent_cost.rs,
+│   │                         # remote/ (8 arq.), plugins.rs, plugin_*.rs, speech*.rs, spotify.rs,
+│   │                         # router9.rs, ai_memory.rs, graphify.rs, backup.rs, telemetry.rs, ...
+│   ├── src/bin/alethe-orchestrator-mcp.rs   # 2º binário: servidor MCP do orquestrador
+│   ├── ghostty_shim/         # Shim nativo Ghostty (macOS)
+│   ├── installer/, capabilities/, vendor/, icons/, assets/
+│   ├── build.rs              # inclui cfg custom ghostty_linked, download de libs STT
+│   └── tauri.conf.json       # CSP, updater, bundle
+├── e2e/                      # WebdriverIO: smoke, onboarding, git-pipeline, conflict-merge-ui,
+│                             # git-graph-screenshot, _record/_replay, _sandbox, _diag
+├── docs/                     # OVERVIEW, FEATURES, PRIVACY, PLUGINS, ORCHESTRATOR_ROADMAP,
+│                             # ROADMAP, THEMES, UI_VISUAL_STYLES, CHANGELOG (171KB),
+│                             # DIAGNOSTICO_MATURIDADE_TECNICA, RELEASING, examples/notes-plugin
+├── plugins.json              # Índice do catálogo de plugins (1 exemplo)
+└── scripts/                  # release.mjs, release-publish.mjs, smoke-ghostty.sh, verify-appimage.sh
+Anomalias menores que revelam processo: src-tauri/resultado.txt (4 bytes, arquivo perdido), docs/HANDOFF_SESSAO_ATUAL.md (nota de sessão de IA temporária em docs/), AGENTS.md/CLAUDE.md que já referenciaram arquivos inexistentes (corrigido parcialmente — a autoauditoria de ago/2026 apontava 5 referências quebradas). São sintomas de desenvolvimento intensivo assistido por IA.
+5. Diagrama de arquitetura
+PARTE B — ARQUITETURA
+6. Arquitetura do frontend
+- Shell único (App.tsx, ~750 linhas): TitleBar custom (janela decorations: false) + react-resizable-panels com sidebar esquerda (ProjectSidebar), área central (HomeView | WorkspaceView | AgentSandbox | AgentCanvasPOC, com lazy()), sidebar direita condicional (rightPanelEnabled = mcp || agentsPanel || tabs contribuídas). ~30 modais montados sob ErrorBoundary separado. Lógica não-trivial de reconciliação de colapso/expand das sidebars (panels auto-colapsam sob minSize em janela estreita; timers, flags de drag, visibilidade de página — tudo tratado explicitamente).
+- Estado: Zustand com store persistida única fatiada em arquivos — projectsStore.ts (32KB) + projectSlices (33KB) + workspaceSlices (33KB) + terminalSlices (37KB) + slices (9KB) + migrations.ts (26KB, com suite de testes de migração dedicada). uiStore explicitamente não-persistido. Stores auxiliares: merge, agentCanvas, agentSandbox, pomodoro, scheduler, graphify, mcp, agentCost, voiceHistory.
+- Fronteira IPC: centralizada em lib/tauri.ts (~150 funções tipadas). Ex-bypass conhecidos (spotify.ts, AgentCanvasPOC) apontados na autoauditoria.
+- Plugins no frontend: host com descoberta por manifesto, ativação preguiçosa (onView:/onCommand:/onStartupFinished), capacidades, storage por plugin, transporte local injetando <script> do esquema alethe-plugin:// e o global window.alethe (React incluso — nunca bundar o próprio).
+- Peculiaridades: i18n EN/pt-BR/zh-CN com enforcement por tipagem (pt-BR.ts é Record<MessageKey, string> de en.ts — build falha se faltar chave); temas via [data-theme] + tokens CSS sanitizados; estilos visuais Normal/Clean como camada opt-in de tokens.
+7. Arquitetura do backend
+- lib.rs é composição pura: registra ~270 comandos como module::função, gerencia estados globais (PtySessions, RemoteHub, OrchestratorState, GhosttySurfaces, FileWatchers, DiscordPresence, PlanningWatchers, Router9Process, AiMemoryProcess, SpeechState, PendingOpen), registra plugins Tauri (dialog, notification, process, updater, single-instance) e o protocolo de URI alethe-plugin://. Setup sobe: panic hook de log, workaround WEBKIT_DISABLE_DMABUF (Linux), ícone de janela manual (Linux), permissões getUserMedia (ditado), sweeper de órfãos, cli_shim (comando alethe), crash_watch, resources, opencode_bridge::ensure_installed(), session_watcher, telemetria, loops de scheduler/supervisor/resource_manager.
+- Saída limpa: ExitRequested mata todas as sessões PTY em paralelo (limite 4s), derruba browser session, router9, ai_memory; Exit marca saída limpa (crash_watch). quit_app oculta as janelas antes de esperar o teardown (issue #275) e loga o tempo.
+- Módulos ~81, sem ciclos detectados (autoauditoria); git_control.rs é módulo-folha estável consumido por worktrees/merge/graphify; Result<T, String> consistente; .unwrap() praticamente só em #[cfg(test)].
+8. Comunicação frontend ↔ backend
+- Invokes tipados (request/response) — a espinha dorsal.
+- Eventos Tauri emitidos do Rust: pty://data/{id}, pty://activity/{id} (450ms, só pane invisível), pty://exit/{id}, pty://spawn-wait/{id}, resource://pty-suspended, projects://saved, agent-hook, agent-spawn, opencode-bridge-status, agent-canvas://mirror, toasts de crash, etc.
+- Loopback HTTP: agent_events.rs (portas 9123–9143, header X-Alethe-Token em memória) recebe hooks dos agentes para o Alethe (Claude hook http nativo; Codex via forwarder PowerShell; OpenCode via plugin JS), além de expor /mcp (ponte MCP stdio→HTTP para o Codex planner) e /spawn.
+- Remote é um segundo servidor (tiny_http + tungstenite) independente do WebView.
+- Batching de stream: reader em thread bloqueante → canal tokio mpsc (1024) → loop que agrega até 64KB/16ms → 1 evento IPC + 1 push de scrollback por lote (comentários no código explicitam o custo de emitir por chunk).
+9. Gerenciamento de PTYs (evidência: pty.rs integral, 2099 linhas)
+Aspecto	Implementação verificada
+Sessão	PtySession { master, writer, child, scrollback, reader_done, teardown(u8), command, cwd, read_active, visible, opencode_nudge_lock } em Arc<Mutex<HashMap>> global
+Spawn	coordenação anti-duplicata (HashSet+Condvar); gate de memória: espera até 400MB disponíveis (max 45s, emite progresso); WSL resolve distro; launcher_override do usuário; cwd inexistente → aviso impresso no terminal; worktrees::git_arg() no cwd (aceita worktree)
+Scrollback	buffer em memória + arquivo .bin por PTY; cap 4MB; flush a cada 250ms via thread escritora dedicada (canal mpsc com Barrier 3s); compactação ao dobrar o cap (corta para cauda de 4MB); attach_pty devolve até 512KB alinhado a fronteira UTF-8; killed/restarted não persistem o buffer final; suspend espera o flush (barreira 5s); limpeza de órfãos: arquivos .bin cujo id não está em projects.json são removidos no boot
+Kill	Windows: taskkill /F /T /PID; Unix: kill(-pid) para o grupo (setsid do portable-pty), SIGTERM→200ms→SIGKILL; correção documentada do bug procps kill -TERM -<pid> (#222); pid lido antes de matar (não segura o lock do child — invariante protegido por teste que inspeciona o próprio fonte)
+Job Object	Windows: CreateJobObject com JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE no boot — descendentes morrem com o app; Linux: sem equivalente, confia no kill de grupo + sweep_orphans_from_previous_session() no boot seguinte
+One-shot	PTYs command_line (instaladores, shells do orquestrador) têm watcher de exit (poll 250ms) — fecha sessão que o reader nunca fecharia
+OpenCode	nudge Ctrl+L (byte 12) 150ms após o 1º output e 50ms após resize, com trava de cooldown 400ms — corrige redraws concorrentes corrompidos (bug real documentado em bytes do scrollback)
+Controles	set_pty_visible (gating de output), set_pty_read_state (pausa/retoma leitura), set_pty_priority (Windows IDLE/NORMAL), get_pty_cwd (sysinfo), list_pty_processes (snapshot try_lock + sysinfo)
+Comportamento ao fechar: fechar aba/container não mata o processo (esconde); matar terminal remove sessão+mata árvore+apaga scrollback; fechar o app mata tudo (paralelo, 4s limite) — no Windows garantido pelo Job Object, no Linux pelo kill de grupo + ceifa de órfãos no boot; reiniciar o sistema = sessão PTY morre, mas scrollback + sessionId persistidos permitem reattach visual e --resume do agente.
+10. Persistência
+Dado	Formato	Local	Notas
+Registry de perfis	profiles.json	app-data root	perfis isolados por diretório
+Workspace inteiro	projects.json (schema v9)	profiles/<id>/	grupos, projetos, terminais, sub-tabs, workspace, preferências, cliPaths; escrita atômica tmp+rename; mutex de save único + sequência monotônica com tolerância de 2s a recuo de relógio (requisito do single-instance); migrações no frontend com testes
+Scrollback	.bin por PTY	profiles/<id>/scrollback/	cap 4MB, append incremental
+Todos	plugin Todo List	dentro do projects.json ou externo em todoStoragePath/todos.jsonc (merge na carga, escrita atômica)	sobrevive a remoção do plugin
+Segredos	JSON plaintext (histórico) → keyring OS	spotify_tokens.json, github_sync.json	migração Spotify p/ keyring verificada em projects.rs::load_projects
+Backups	zip de export/import	escolha do usuário	proteção zip-slip; exclui .log/.tmp
+Logs	logs/ (telemetria.jsonl, crash, app-events, resource, spawn.log por perfil)	root	append-only; crash 20 arquivos/prefixo
+Banco OpenCode	SQLite do próprio OpenCode	~/.local/share/opencode/opencode.db	aberto READ_ONLY pelo Alethe
+Handoffs	handoffs/<id>/context.md	perfil	owner-only, nunca sobrescreve, cleanup após 1º turno
+Backups MCP	10 por (agente,source)	profiles/<id>/mcp/backups/	prune automático
+11. Gerenciamento de estado
+O ProjectsFile v9 (src/lib/types.ts) é o contrato central: groups[] (aninhados por parentGroupId), projects[] (terminais com tabs: SubTab[], paneGroups, grids[], worktreeMode, healthCheck, agentes de conflito/revisão, orphanWorktrees), workspace (containers, tabs com snapshot completo, histórico com índice — navegação estilo browser), preferences (~90 campos), cliPaths. Toda mutação agenda save debounced 500ms que serializa a árvore inteira (ponto conhecido de custo — autoauditoria). O backend emite projects://saved para a janela destacada do board reler o arquivo.
+12. Concorrência e processos
+- Escrita de keystroke nunca segura o lock global além do clone do Arc do writer; kills em paralelo com mpsc e prazo; spawn com reserva de id; barreiras explícitas de flush (scrollback 3s, suspend 5s); telemetria usa try_lock (nunca bloqueia digitação).
+- Limites configuráveis: spawnConcurrency (default 3, fila global no frontend), maxConcurrent workers (default 4), orçamento de memória (1536MB, parking opt-in smart-lru), prioridade de processo, nodeHeapProfile (injeta --max-old-space-size/UV_THREADPOOL_SIZE em PTYs de agentes Node).
+- Gargalos documentados: re-renders por seletores largos (autoauditoria §4.1), polling GhosttySurface 700ms/pane (macOS), serialização integral a cada save.
+13. Segurança (leitura crítica, não presunção)
+Fatos verificados no código/config:
+Superfície	Estado no commit auditado
+CSP	Estrito em tauri.conf.json (default-src 'none', script-src 'self' alethe-plugin:; connect-src limitado a ipc/npm/github) — PRIVACY.md ainda diz csp: null; documento desatualizado (drift)
+Consentimento de usage	usageAccess default false por provedor ("nothing reads a provider that is off") — PRIVACY.md ainda descreve polling incondicional; evolução posterior ao doc
+Hooks de agente	token em memória, portas loopback 9123–9143, arquivos de settings 0600 em dir 0700, anti-symlink (#116), atomic write
+MCP	segredos mascarados; reveal 1 chave/clique; sync entre agentes inteiro no Rust (segredo nunca transita pela webview); backups antes de escrever; self-check pós-escrita; preserva permissões 0600
+Plugins	capacidades declaradas; lista de comandos proibidos (PTY spawn/write, FS write/delete, writer do projects, reveal, etc.); esquema alethe-plugin:// com rejeição de traversal/symlink/UNC/content-type sniffing; catálogo com SHA-256 fixado; trust dialog; instalação desabilitada por padrão; limite honesto declarado: roda na mesma webview — enforcement é guard-rail, não sandbox
+Updater	assinatura via pubkey Tauri, endpoint GitHub Releases; check automático no boot sem preferência de desligar (PRIVACY.md admite)
+Remote LAN	ver RC abaixo — HTTP/WS sem TLS (admissão explícita: "trusted network only")
+Segredos em JSON	GitHub PAT (github_sync.json) e tokens Spotify em JSON plaintext; Router9 apiKey plaintext em projects.json (comentário admite); MCP creds permanecem nos arquivos dos agentes
+Telemetria	100% local (jsonl), sem uploader
+Assinatura de binários	Windows sem code-sign (falso positivo Defender documentado); macOS sem notarização (Gatekeeper) — roadmap pendente
+Issues de segurança abertas	#115 (ciclo de vida dos hook settings), #123 (instaladores pipe-to-shell de agentes)
+Classificação: riscos comprovados (segredos plaintext, remote sem TLS, builds não assinados); escolhas sensíveis mas mitigadas (hooks loopback, plugin guard-rail, consentimento de usage); hipóteses a testar (resistência real do esquema plugin no Windows via forma .localhost).
+14. Testes e qualidade técnica
+- Unit frontend: Vitest, ~436 testes (nº citado no roadmap de out/2026; eram ~9% de cobertura em ago/2026 — cresceu, mas concentra-se em stores/lib, não em componentes).
+- Unit Rust: cargo test --lib + tests/orchestrator.rs (24 testes, um flaky reconhecido); estilo peculiar e interessante: testes de invariante que inspecionam o próprio fonte (include_str! + asserções de padrão) para travar decisões de lock/teardown contra regressões.
+- E2E: WebdriverIO + @wdio/tauri-service roda o app Tauri real (build debug): smoke, onboarding, git-pipeline, conflict-merge-ui, git-graph-screenshot, _record/replay (gravação/replay de jornadas), sandbox. Issue #39: 8 arquivos de teste em tests/ nunca rodaram no CI.
+- CI: tsc && vite build (valida i18n por tipagem) + testes + cargo multi-plataforma; sem ESLint/clippy no CI (autoauditoria).
+- Qualidade: backend maduro (ver §13/§9); frontend em melhoria (god-object já fatiado); duplicações mapeadas pela autoauditoria (~600–700 linhas FE, ~150–200 BE) com recomendações; sem ADRs formais (RFC-003/004/006/007 só em comentários); changelog disciplinado (171KB).
+PARTE C — PRODUTO: INVENTÁRIO INTEGRAL POR MÓDULO
+Legenda de estado: ✅ implementado e verificável · 🟡 parcial · 🧪 experimental · 🔌 via plugin/config · 📋 planejado · ❓ não confirmado
+Complexidade estimada para implementação original no HATI: 🟢 baixa · 🟡 média · 🔴 alta · ⬛ muito alta
+Recomendação preliminar: E essencial · R recomendado · O opcional · Q questionável · D desaconselhado
+Módulo A — Workspace e Projects (WS)
+ID	Funcionalidade	Como funciona no Alethe (evidência)	Estado	Cx	Rec
+WS-01	Cadastro de projeto por pasta local	Project{id,name,groupId,terminals[],defaultCwd,color,iconUrl,createdAt} persistido em projects.json; abrir pasta do sistema cria o projeto	✅	🟢	E
+WS-02	Grupos e subgrupos aninhados	Group.parentGroupId recursivo; cores, ícones, colapso, suspensão, arquivo	✅	🟡	R
+WS-03	Containers: projeto aberto vira moldura; fechar não mata processos	WorkspaceContainer{projectId,paneIds,internalLayout,collapsed,size}; PTY fica no backend	✅	🟡	E
+WS-04	Múltiplos projetos simultâneos em abas de workspace	WorkspaceTab{kind, snapshot completo} + closedTabs — cada tab é um snapshot do workspace inteiro	✅	🔴	E
+WS-05	Histórico de navegação do workspace (Alt+←/→)	workspace.history[] + historyIndex	✅	🟡	O
+WS-06	Modo flat (combinar panes de vários projetos)	preferences.workspaceFlat	✅	🔴	O
+WS-07	Fullscreen de container	fullscreenContainerId; Esc sai	✅	🟢	R
+WS-08	Colapsar containers em headers compactos	container.collapsed	✅	🟢	R
+WS-09	Drag & drop de projetos/grupos/terminais	@dnd-kit na ProjectSidebar (1540 linhas, menus de contexto, chamadas git diretas)	✅	🔴	R
+WS-10	Cores/ícones por projeto e grupo	GROUP_COLORS, color, iconUrl, ícones de agente por linha	✅	🟢	R
+WS-11	Arquivar/ocultar projetos	archived, hidden (revelar via Preferências)	✅	🟢	O
+WS-12	Recentes	workspace.recentProjectIds/recentTabs	✅	🟢	E
+WS-13	Clone de repo GitHub gera briefing p/ agentes	clone_github_repo: git clone --depth 1, normaliza URL, escreve AGENTS.md/CLAUDE.md com README truncado + stack detectada + instrução de resumo	✅	🟡	O
+WS-14	Detecção de stack do projeto	project_detector::detect_project_stack	✅	🟢	O
+WS-15	Perfis locais isolados	profiles.rs: registry, criação/renome/exclusão (não permite excluir o último), isolamento total de dados por perfil	✅	🟡	O
+WS-16	Modo "agentSandbox" de projeto	Project.mode: 'standard'|'agentSandbox' + AgentSandbox view	🧪	🔴	Q
+WS-17	Sidebar em árvore Home/grupos/projetos/terminais	ProjectSidebar com contagens de terminais, ícones de agente, sub-abas	✅	🔴	E
+WS-18	Menus de contexto (grupo/projeto/terminal)	dentro da ProjectSidebar; recentemente corrigidos p/ ficarem na janela (commit e100873)	✅	🟡	E
+WS-19	Comando alethe <path> abre projeto; single-instance com handoff	cli_shim.rs instala em ~/.local/bin; single-instance plugin + probe D-Bus no Linux com diagnóstico de dono travado	✅	🟡	R
+WS-20	Suspender grupo (mata PTYs, fecha containers, reativável)	Group.suspended + kill_ptys em lote paralelo	✅	🟡	R
+WS-21	Grids múltiplos por projeto + layout por grupo/workspace	Project.grids[], activeGridId, layout em 3 níveis	✅	🔴	O
+Notas do módulo (dependências/benefícios/risco): o par projeto↔terminal↔PTY do Alethe é o coração funcional e vale ser preservado como conceito no HATI. Onde o HATI diverge: o Alethe não tem qualquer noção de tarefa dentro do projeto (exceto todos soltos) — o Kanban do HATI exigirá uma entidade nova ligada ao projeto (e opcionalmente a terminais/sessões). Risco herdado: a serialização integral da árvore por mutação (ver §11).
+Módulo B — Sistema de layouts (LY)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+LY-01	Layout Auto (1=full, 2=lado a lado, 3+=grid)	LayoutMode='auto'	✅	🟢	E
+LY-02	Layout Spotlight (primário + pilha lateral)	idem	✅	🟡	R
+LY-03	Layout Sidebar (lista estreita + pane ativa)	idem	✅	🟡	O
+LY-04	Custom Grid: editor visual com colSpan/rowSpan, frações redimensionáveis, swap por drag	GridLayout{cols,rows,cells:Record<string,GridCell>,colSizes,rowSizes} + projectGrids.test.ts (10KB de testes)	✅	🔴	O
+LY-05	Histórico de layouts salvos por nível (projeto/grupo/workspace)	gridLayoutHistory[]	✅	🟡	O
+LY-06	Layout Designer modal (editor dedicado, lazy)	modals/LayoutDesignerModal	✅	🔴	O
+Notas: o layout vive nos dados (projects.json) e é restaurado por hidratação — sem persistência visual separada. O custo alto do Custom Grid só compensa no HATI se for prioridade real de UX; Auto+Spotlight cobrem 90% do valor.
+Módulo C — Terminais e PTYs (TM)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+TM-01	PTYs reais multi-OS	portable-pty; spawn/attach/write/resize/restart/kill/suspend	✅	⬛	E
+TM-02	Sub-abas: cada aba tem agente/cwd/PTY próprios	SubTab{type,cwd,ptyId,sessionId,extraArgs,runtimeProfile,...}; lane ocultável	✅	🔴	E
+TM-03	Scrollback persistido por PTY	4MB cap, flush 250ms, compactação 8MB→4MB, arquivos .bin	✅	🔴	E
+TM-04	Attach com tail 512KB alinhado a UTF-8	attach_pty(max_bytes)	✅	🟡	E
+TM-05	Streaming em lotes (16ms/64KB) + throttling de atividade em pane oculta (450ms)	pipeline mpsc do pty.rs	✅	🔴	E
+TM-06	Resize automático + ResizeObserver + fit	resize_pty no backend; evento replicado ao remote	✅	🟡	E
+TM-07	Restart de terminal (mantém id)	mata árvore, apaga scrollback, respawna	✅	🟡	E
+TM-08	Desabilitar terminal/projeto; suspender grupo	libera memória (RAM readout na titlebar)	✅	🟡	R
+TM-09	Kill de árvore de processos multi-OS	taskkill /T vs kill(-pgid) SIGTERM→SIGKILL	✅	🔴	E
+TM-10	Garantia de morte de descendentes (Job Object Win)	JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE	✅	🔴	E
+TM-11	Ceifa de órfãos entre sessões	sweep_orphans_from_previous_session no boot	✅	🔴	E
+TM-12	Gate de memória no spawn (400MB/45s)	emite progresso pty://spawn-wait	✅	🟡	R
+TM-13	Prioridade de processo (Windows)	IDLE/NORMAL via Win32	✅	🟡	O
+TM-14	Pausar/retomar leitura de PTY	set_pty_read_state (Condvar)	✅	🟡	O
+TM-15	Histórico de prompts por terminal	FEATURES.md; lib de prompt history	✅	🟢	R
+TM-16	Busca dentro do terminal	@xterm/addon-search	✅	🟢	R
+TM-17	Overlay de reinício quando processo morre	pty://exit com reason (killed/suspended/restarted/exited)	✅	🟢	E
+TM-18	PTYs one-shot com watcher de exit	para instaladores/shells do orquestrador	✅	🟡	R
+TM-19	WSL como shell de primeira classe	lista distros, resolve CLI dentro do WSL, home da distro	✅	🔴	O (HATI é Linux-first)
+TM-20	Fonte de terminal configurável + heap profile Node	terminalFontFamily (Nerd Font p/ oh-my-posh), --max-old-space-size injetável	✅	🟢	R
+TM-21	xterm WebGL com budget 4 + fallback canvas	webglPool.ts	✅	🟡	E
+TM-22	Ghostty nativo (superfície NSView sobre a WebView)	ghostty_bridge/ffi/shim — macOS only, cfg ghostty_linked, smoke test próprio	🧪	⬛	D (fora de escopo Linux)
+TM-23	Copy/paste nativo + comandos de clipboard	diagnostics read/write clipboard	✅	🟢	E
+TM-24	RAM por processo + snapshot de runtime	sysinfo; resources::get_runtime_snapshot	✅	🟡	R
+TM-25	Crash watch + toast de crash com órfãos ceifados	crash_watch.rs; App.tsx exibe na inicialização	✅	🔴	R
+TM-26	Watcher de processo filho p/ WSL (master nunca dá EOF)	polling 150ms + graça 500ms, testado	✅	🟡	— (implícito a TM-19)
+Notas: este módulo é o mais maduro do Alethe e a maior fonte de aprendizado aplicável: o HATI não deve copiar o código (AGPL) mas o repertório de armadilhas (locks, flush, UTF-8 split, ConPTY, setsid, nudge de redraw) é diretamente transferível como especificação de requisitos. No Linux há bugs reais em aberto que informam o HATI: #205 (fechar app derruba sessão KDE inteira no Kubuntu!), #192 (scrollback reflow ilegível em split view), #111 (copy/paste quebrado na 1.5.0 Linux).
+Módulo D — Agentes de programação (AG)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+AG-01	14 agentes built-in + custom + plugins	claude, codex, copilot, cursor(cursor-agent), antigravity(agy), opencode, kiro-cli, kimi, grok, codewhale, mimo, freebuff, shell, wsl (types.ts ALL_AGENT_TYPES); CustomAgentDefinition (slug, CLI, flag unrestricted, accent, ícone)	✅	🔴	E (subconjunto)
+AG-02	Detecção de instalação de CLIs	PATH, registro Win, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Choco + override manual (cli_resolver.rs); instalação/update/uninstall via gerenciador detectado (agent_library.rs)	✅	🔴	R
+AG-03	Flags "unrestricted" por agente	tabela UNRESTRICTED_FLAG (ex.: --dangerously-skip-permissions)	✅	🟢	R
+AG-04	Session resume	sessionId persistido na sub-aba; retomada por --resume (Claude/Codex/Cursor/OpenCode); session_watcher.rs reattach contínuo	✅	🔴	E
+AG-05	Recent Chats: listar conversas do cwd e reabrir	*_sessions.rs snapshot por provedor (parse dos históricos locais: ~/.claude/projects, ~/.codex/sessions, etc.)	✅	🔴	R
+AG-06	Handoff Claude↔Codex com pacote de contexto redigido	handoff.rs prepare/materialize/complete; redação regex best-effort de tokens/keys; escopos full/user-only; context.md owner-only	✅	🔴	Q
+AG-07	Hooks de eventos dos agentes → app	listener HTTP loopback + token; Claude: hooks http nativos (SessionStart, UserPromptSubmit, SubagentStart/Stop, PreToolUse, PostToolUse, TaskCreated/Completed, Stop, TeammateIdle); Codex: forwarder PowerShell + blocos marcados idempotentes em .codex/config.toml	✅	⬛	R
+AG-08	Plugin global do OpenCode (working/idle)	opencode_bridge.rs escreve ~/.config/opencode/plugin/alethe-bridge.js reportando session.idle/tool.execute.before via env ALETHE_BRIDGE_ENDPOINT	✅	🟡	E (referência direta p/ HATI)
+AG-09	OpenCode GSD sync	opencode_gsd_plugin.rs + planning.rs/planning_gate.rs: watcher de planos, autocommit, auditoria	🟡	🔴	Q
+AG-10	Modelos por provedor + discovery	PROVIDER_MODELS + discover_provider_models (cursor/kimi/grok/codewhale preenchem ao vivo)	✅	🟡	R
+AG-11	Runtime profiles (full/lean/diagnostic)	AgentRuntimeProfile	✅	🟢	O
+AG-12	9router (proxy local multi-provedor)	instala cópia version-pinned, porta 20128, opt-in, aplica só a terminais novos	🟡	🔴	Q
+AG-13	Codex app-server bidirecional	codex_app_server.rs start/send/stop — canal de controle persistente p/ orquestração	✅	🔴	R
+AG-14	Ícones custom de agente	preset/arquivo PNG/URL (custom_agent_icons.rs)	✅	🟢	O
+AG-15	Agent Canvas (POC)	canvas de sessões/subagentes — marcado como abandonado no roadmap	🧪	⬛	D
+AG-16	Agent Sandbox (workers em sandbox)	feature flag AGENT_SANDBOX_ENABLED; permissões ask/bypass	🧪	⬛	Q
+Notas — profundidade por agente (pergunta D da missão):
+- Claude Code — o mais profundo: resume, usage OAuth, hooks http nativos, worker headless via claude -p --input-format stream-json (protocolo empírico documentado no roadmap: init/result com total_cost_usd, rate_limit_event, interrupt via control_request), economia (haiku-resumidor/mecânico), orquestrador planner+worker.
+- Codex — segundo mais profundo: app-server próprio, worker com steer/interrupt/diff por JSON-RPC, planner via ponte MCP PowerShell, usage via backend ChatGPT + reset credits, hooks via forwarder.
+- OpenCode — raso no Alethe: spawn em PTY + plugin-ponte de estado + leitura de custo do SQLite local + config writers (MCP/Graphify/AI Memory/GSD). Sem app-server, sem worker de orquestração (fase 4 do roadmap = 0%) — o HATI pode diferenciar-se justamente aqui.
+- Antigravity — sessions + usage (API interna Google), sem worker (fase 3 = 0%).
+- Demais (copilot, cursor, kiro, kimi, grok, codewhale, mimo, freebuff) — majoritariamente processos de terminal com resume em alguns (cursor) e custom agents genéricos.
+Módulo E — Monitoramento de uso e limites (US)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+US-01	Claude usage cards	token via env/~/.claude/.credentials.json/keyring → GET api.anthropic.com/api/oauth/usage (beta oauth-2025-04-20); janelas 5h/7d/7d-Opus + limits[] weekly_scoped por modelo	✅	🔴	R
+US-02	Codex usage	token de ~/.codex/auth.json → chatgpt.com/backend-api/wham/usage + rate-limit-reset-credits; fallback codex app-server efêmero	✅	🔴	R
+US-03	Antigravity usage	credencial agy no keyring → API interna Google (daily-cloudcode-pa.googleapis.com/v1internal:...)	✅	🔴	Q (fragil)
+US-04	OpenCode usage (local, robusto)	SQLite do OpenCode aberto READ_ONLY (opencode db path CLI); resumo por horas com custo real por modelo	✅	🟡	E (base do HATI)
+US-05	Token HUD por sessão	custo por sessão: Claude (parse JSONL × pricing hardcoded opus 5/25, sonnet 3/15, haiku 1/5 + cache 1.25x/2x/0.1x), Codex (token_count do JSONL), OpenCode (coluna cost do DB)	✅	🔴	R
+US-06	Indicadores na topbar com poll 5min + cache 60s compartilhado	pula tick com janela oculta; issue #272 pede menos frequência e razão de falha	✅	🟡	R
+US-07	Notificação de reset de limite	lib/limitResetWatch + notifyOnLimitReset	✅	🟢	O
+US-08	Modal de reset credit (Codex)	ResetCreditModal + consume_codex_reset_credit	✅	🟡	O
+US-09	Consentimento explícito por provedor (usageAccess)	default off — nada lê provedor desligado	✅	🟢	E (padrão a preservar)
+US-10	Modal AI Usage com N cards	redistribuição responsiva (fix ef74955)	✅	🟢	R
+US-11	Activity stats local (widgets Home)	activity_stats.rs, activity-stats.json	✅	🟡	O
+Notas: a estratégia Alethe é raspar endpoints OAuth/internos dos provedores — historicamente frágeis (headers beta, API v1internal do Google), com issue aberta sobre frequência/falhas. O contraste é o caminho OpenCode: dados locais e auditáveis. Para o HATI, com suite OpenCode-nativa, a recomendação técnica é inverter a prioridade: fontes locais primeiro (banco do OpenCode, --report dos CLIs), scraping remoto opcional/consentido.
+Módulo F — Orquestração de agentes (OR)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+OR-01	Orchestration Board (off por default)	planner (Claude ou Codex) chama alethe_delegate via MCP; workers reais em processos próprios	✅/🟡	⬛	Q
+OR-02	Workers Claude+Codex com steer/cancel/diff/aprovação	Codex: app-server JSON-RPC; Claude: stream-json + interrupt (sem canal de aprovação interativa — bypass decidido)	✅	⬛	Q
+OR-03	Worktree isolado por worker (isolate)	.alethe/worktrees/<job_id>/, branch alethe/agent-<job>	✅	🔴	Q
+OR-04	Aprovação de sandbox ("asks before leaving sandbox")	gates de permissão por job (Codex); Claude sem paridade	🟡	🔴	Q
+OR-05	Diff inline no card do worker	git diff HEAD pós-turno (Claude) / turn/diff (Codex)	✅	🟡	O
+OR-06	Status/custo/tokens por card	Job{tokens,quota,awaiting_steer,...} no snapshot	✅	🔴	R
+OR-07	Roles com fallback por cota	OrchestrationRole{agent,model,effort,readOnly,timeout,fallback,orchestrator}	✅	🔴	Q
+OR-08	Routing rules por kind/effort/quota-gate	RoutingRule + presets (economy/balanced/performance); onBothCritical: ask|run-cheapest|block	✅	🔴	Q
+OR-09	Consciência de cota cross-vendor (fitness)	worstWindow(agent) colapsa janelas incomparáveis; headroomHint na resposta do alethe_delegate; fitness em toda resposta de ferramenta (transport MCP sem push — decisão honesta)	✅	🔴	R (como conceito)
+OR-10	Routing trace no canvas (chosen/ignored)	rótulo HTML na aresta com o porquê	✅	🔴	O
+OR-11	Apply worktree (caminho limpo)	commit→fetch→mergeAnalyze→prepare→finalize→remove	✅	🔴	Q
+OR-12	Janela destacada do board	OrchestrationWindow lendo projects.json + mirror do canvas	✅	🔴	O
+OR-13	Skill alethe-orchestrate bundada	orquestra lotes multi-agente sem MCP, via CLIs; preferências exportadas p/ policy file	✅	🔴	Q
+OR-14	GSD Sync (2ª orquestração)	scheduler.rs/supervisor.rs/planning — reconhecidamente desconectada da primeira (roadmap: "currently disconnected")	🟡/📋	⬛	D (confusão confirmada)
+OR-15	Antigravity/OpenCode como worker	fases 3/4 do roadmap: 0%	📋	⬛	—
+OR-16	Personas planner/brainstorm/executor	fase 7: não iniciada	📋	🔴	—
+Notas: o valor analítico aqui é o diário de descobertas empíricas do roadmap: protocolos headless validados contra binários reais (e divergindo dos docs oficiais — lição explícita do projeto), formatos de interrupt, ausência de canal de aprovação no Claude CLI cru. Para o HATI, orquestração profunda multi-vendor é o recurso de maior custo e maior risco do catálogo — e o Alethe prova que exige pesquisa empírica por agente.
+Módulo G — MCPs e Skills (MC)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+MC-01	Scan de todos os MCPs da máquina por 6 agentes	claude/codex/cursor/opencode/antigravity/kimi; cache por mtime+len; ~/.claude.json (inclui escopo local por cwd), ~/.codex/config.toml, etc.	✅	🔴	E
+MC-02	Escopos global/projeto (+ .mcp.json do repo)	McpScope, McpSourceKind user/local/project	✅	🟡	R
+MC-03	Upsert/remove/enable com self-check + backup + atômico	parse→guard→gera→re-parse e compara nomes→backup (max 10)→write tmp+rename preservando 0600; jsonc recusado; campos não-suportados bloqueiam	✅	🔴	E
+MC-04	Copiar servidor entre agentes (sync backend-only)	segredo nunca transita pela webview; outcome written/skipped/blocked/failed	✅	🔴	R
+MC-05	Reveal de env sob clique único	mcp_reveal_env — única rota de valor à webview	✅	🟡	R
+MC-06	Busca no registry oficial	registry.modelcontextprotocol.io/v0/servers, cache 20 termos	✅	🟢	O
+MC-07	Health check real por CLI (claude/codex/opencode)	o próprio CLI do usuário testa o servidor; probe genérico em porta efêmera loopback	✅	🟡	O
+MC-08	Skills: scan/detail/uninstall por agente	skills.rs; shared stores resolvidos (skill compartilhada aparece 1x)	✅	🔴	R
+MC-09	Skills bundadas "From Alethe" com install/update e proteção de conflito	skills_install_bundled; nunca sobrescreve skill homônima que não instalou	✅	🟡	O
+Notas: o pipeline de escrita segura em configs de terceiros (mcp_store.rs) é um dos melhores ativos de referência do Alethe — os invariantes (self-check, preservação de formatação via toml_edit/serde preserve_order, backups, permissões) são a especificação de requisitos ideal para o HATI.
+Módulo H — Sistema de plugins (PL)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+PL-01	Tudo é plugin (features oficiais incl.)	manifesto + code; bundled (import() do app) vs local (alethe-plugin:// + window.alethe); mesmo contrato activate(context)	✅	⬛	Q (decisão de filosofia)
+PL-02	Capacidades + comandos proibidos	tokens exatos/prefixo * (bare * rejeitado); lista proibida (PTY, FS writes, reveal...); trust dialog p/ habilitar	✅	🔴	R (se HATI tiver plugins)
+PL-03	Catálogo com SHA-256 + install 1-click	índice plugins.json no repo; fetch/cache 6h no Rust; id dentro do zip deve bater; unpack com anti-zip-slip + limites	✅	🔴	O
+PL-04	Import local limitado	200 arquivos/10MB/5 níveis, symlinks recusados, chega desabilitado	✅	🟡	O
+PL-05	Storage por plugin/por perfil	<profile>/plugin-data/<id>.json, 1MB, fila anti-perda, corrompido=vazio	✅	🟢	O
+PL-06	Contribuições: views/commands/themes/panes/modals/agentProvider	agent provider é plugin — adicionar CLI novo não mexe no core	✅	🔴	R
+PL-07	Oficiais: Todo List, Git Control, Theme Pack	desligáveis sem restart; superfícies somem	✅	🔴	O
+PL-08	Temas como plugin (tokens sanitizados)	sanitização por token (sem url()/js:/comentários); swatch/terminal palette	✅	🟡	R
+Notas: honestidade técnica do projeto: "enforcement is advisory... Treat installing a local plugin the way you would treat running any other program" — para o HATI, se plugins existirem, a decisão real é child-webview/isolamento desde o dia 1, ou aceitar declaradamente o mesmo limite.
+Módulo I — Git e controle de versão (GT)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+GT-01	Painel Git por projeto	status/stage/unstage/discard/commit/push/pull/branches (git_control.rs, 21 comandos)	✅	🔴	R
+GT-02	Diffs em pane dedicada	git_diff + DiffPane	✅	🟡	R
+GT-03	Log graph + inspeção de commit	git_log_graph, show files/message	✅	🟡	O
+GT-04	Branch/cherry-pick/revert/reset	comandos expostos (e automatizáveis por agentes — o Alethe não impede)	✅	🔴	Q (HATI exige guarda humana)
+GT-05	Worktrees de primeira classe	provision/list/remove/cleanup/fetch/lock/commit (RFC-003; .alethe/worktrees/)	✅	🔴	R
+GT-06	PR Review via gh (sem token próprio)	metadata do PR do worktree; AI review read-only dentro do worktree; squash-merge ação humana explícita com guardas (SHA movido, draft, conflitos); sem commits/pushes/comentários pelo agente	✅	⬛	R (referência de guardas)
+GT-07	Aba Open PRs → todo com link	TodoItem.prUrl/prNumber/prRepo	✅	🟡	O
+GT-08	Merge Center (analyze/prepare/validate/finalize/abort/rebase)	mergeStore.ts (38KB) + merge_analyzer/conflict_resolution.rs	✅	⬛	Q
+GT-09	Agente efêmero de conflito + sessões Review/Test	terminais marcados ephemeralConflictAgent/ephemeralUtility — excluídos dos watchers (bugs documentados nos comentários de types.ts)	✅	⬛	Q
+Notas: alinhamento direto com o requisito do HATI ("controle humano obrigatório sobre commits/pushes"): o modelo Alethe de PR review é a referência — merge squash sempre manual, agente confinado ao worktree, autenticação delegada ao gh. Por outro lado, o git_control.rs expõe commit/push como comandos IPC livres — o HATI deve desenhá-los fora da superfície automatizável por padrão.
+Módulo J — Recursos complementares (AX)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+AX-01	Home (saudação, recentes, ações rápidas, widgets usage/Spotify)	HomeView lazy	✅	🟡	R
+AX-02	Pomodoro integrado (25/5/15)	pomodoroStore + snapshot sobrevive a restart; foco em um todo	✅	🟢	O
+AX-03	Todos com tags (+ PRs)	plugin Todo List; storage externo opcional todos.jsonc	✅	🟢	E (como subsolo do Kanban)
+AX-04	Pane Markdown + comentários ancorados	react-markdown+mermaid; MarkdownComment{path,quote,note,...}	✅	🟡	R
+AX-05	Explorador de arquivos	pane kind:'file'	✅	🟡	R
+AX-06	Panes de imagem e vídeo	ImagePane/VideoPane	✅	🟢	O
+AX-07	Navegador embutido	webview privada incognito (JS on) ou engine CDP (screencast do browser que o agente dirige); watch targets; playwright MCP shared/dedicated	✅	⬛	Q
+AX-08	Graphify: grafo de código servido como MCP	graphify.rs + cytoscape; snapshots/diff/rollback; config writers p/ opencode/codex	✅	🔴	Q
+AX-09	AI Memory bridge	gerencia ai-memory de 3ºs (porta 49374, MCP stdio), install/start/counts, merge de hooks	🔌	🔴	Q
+AX-10	Ditado por voz 100% local	sherpa-onnx (parakeet default), download/gerenciamento de modelos, modo toggle/hold, seleção de mic	✅	🔴	O
+AX-11	Voice commands (barra)	via API key "Decisions" + jev_decide	🔌	🟡	Q
+AX-12	Spotify Now Playing	OAuth com credenciais do usuário; callback 127.0.0.1:8888; widgets Home/sidebar	✅	🟡	D (scope creep p/ HATI)
+AX-13	Discord Rich Presence	texto genérico a cada 30s ao IPC local do Discord	✅	🟢	D
+AX-14	16 temas built-in + app icons + terminal themes	BuiltinTheme (elite-indigo default)	✅	🟡	R (subconjunto)
+AX-15	Estilos visuais Normal/Clean	tokens Clean: rows 30px, toolbars 42px, sem sombras; visual-clean.css	✅	🟡	R (alusão à estética Omarchy)
+AX-16	i18n EN/pt-BR/zh-CN com enforcement por tipos	build falha com chave faltante	✅	🟡	E
+AX-17	Jump/find modal (Ctrl+P) + command palette com comandos de plugins	FindJumpModal; keywords	✅	🟡	E
+AX-18	Atalhos completos	tabela em FEATURES.md (Ctrl+T/Shift+T/W/P/1-9, Shift+Tab, Ctrl+Tab, zoom, R, Esc)	✅	🟢	E
+AX-19	Zoom da WebView + opacidade de janela (Win)	persistidos	✅	🟢	O
+AX-20	Backup export/import zip (anti-zip-slip)	profile completo exceto logs/tmp	✅	🟡	R
+AX-21	GitHub Gist Sync (manual, secret gist)	PAT em github_sync.json; push/pull explícitos	✅	🟡	O
+AX-22	Cloud sync 1ª parte (device flow)	cloud_sync.rs — hospedado futuro	🟡	🔴	D (foco HATI é self-hosted seguro)
+AX-23	Auto-update com assinatura	updater Tauri + latest.json; sem pref de desligar o check	✅	🟡	R
+AX-24	What's New + Onboarding/Welcome + setup walkthrough	modais	✅	🟢	R
+AX-25	Diagnósticos: spawn.log, export logs, reset/wipe	diagnostics.rs (13 comandos)	✅	🟢	R
+AX-26	Telemetria local jsonl (cap 2MiB per FEATURES.md; PRIVACY diz sem cap — divergência entre docs)	sem uploader	✅	🟢	R
+AX-27	Terminal Inspector	inspeção de processo por pane	✅	🟢	O
+AX-28	Right sidebar: MCP/Skills/Agents panel/PRs/Merge/Now Playing	RightSidebar + viewPlacements por view	✅	🔴	R
+AX-29	Resource Manager (política smart-lru opt-in, parking, orçamento)	budget 1536MB default, idle 15/30min	✅	🔴	R
+AX-30	Confirmação de fechamento	useCloseConfirmation	✅	🟢	R
+AX-31	Notificações in-app (toasts) + nativas	InAppNotifications + plugin notification	✅	🟢	E
+AX-32	Memória de próximos passos: HANDOFF/docs de sessão	processo improvisado de sessões de IA	🟡	🟢	—
+Módulo K — Acesso remoto / mobile (RC)
+ID	Funcionalidade	Como funciona	Estado	Cx	Rec
+RC-01	Remote Control LAN (off por default)	HTTP+WS em 9340–9360 na interface LAN; QR com token de pairing (janela 120s) trocado por token de sessão bound ao dispositivo	✅	🔴	E (núcleo), ver RC-04
+RC-02	Modelo read-mostly	metadados+output dos terminais; 1 prompt completo por vez; nunca cria/deleta/edita entidades	✅	🟡	E
+RC-03	Opt-ins escalonados de input	read-only default; input de agente exige opt-in separado; shell input tem opt-in próprio; remoteShared por terminal	✅	🟡	E
+RC-04	Transporte HTTP/WS sem TLS — "trusted LAN only"	admissão explícita em README/PRIVACY/código	✅	—	D (HATI exige TLS por design)
+RC-05	Alcance via Tailscale	remoteUseTailscale: binda no endereço do tailnet (usa a rede segura do Tailscale como transporte)	✅	🟡	R (caminho "fora de casa")
+RC-06	Gestão de dispositivos	max 4 (default 1), revoke individual/global, expiry 5min–24h (default 1h), lockout 10 falhas/60s→300s, rate 20 msg/min, auto-disable após 4h sem dispositivos pareados, 24 conexões	✅	🟡	R
+RC-07	Follow agents: acompanhar e responder agentes do celular	scrollback + eventos pty replicados ao hub (remote_hub.publish)	✅	🔴	E (requisito HATI #9)
+Notas: o design de limites/consentimentos do Alethe é excelente; o ponto fraco é o transporte. Para o requisito HATI de acesso fora de casa com segurança, as alternativas reais são: (a) túnel gerenciado (Tailscale/WireGuard) mantendo o par HTTP+TLS local — menor esforço, herda o modelo Alethe via RC-05; (b) proxy HTTPS reverso com autenticação própria (Caddy/nginx + tokens) — mais controle, mais superfície; (c) relay próprio com E2E — só se o HATI hospedar serviço. Nenhuma decisão agora; o catálogo registra as opções.
+PARTE D — DECISÕES FUTURAS (PARA O HATI)
+25. (cont.) Perguntas da comparação (seção 8 da missão)
+Projects: o modelo Alethe (projeto = cwd + terminais + layout + estado local, identidade por id persistido, abertura como container) é adequado como esqueleto conceitual do HATI. Mudanças conceituais necessárias: (1) o HATI pede "aba Projects" explícita como porta de entrada — no Alethe a sidebar já é isso, mas sem o estágio de seleção/gestão dedicada; (2) com Kanban por projeto, a entidade tarefa precisa existir fora do projects.json monolítico (relação n-para-n tarefa↔terminal/sessão, não embedded) — o Alethe só tem todos soltos com link de PR; (3) SQLite já é usado pelo Alethe apenas como leitor do banco OpenCode — para o HATI com Kanban + métricas + histórico de sessões, um banco local (SQLite) tende a servir melhor que JSON integral reescrito; o padrão de migrações versionadas do Alethe (projectsStore.migrations.ts, v9) permanece válido em qualquer formato.
+Kanban: integração sem acoplamento excessivo = a tarefa referencia (ptyId, sessionId, agent) opcionalmente, como o Alethe referencia PRs em TodoItem — o executor de processos não conhece o quadro; o quadro enriquece cartões com estado vivo dos PTYs via eventos (pty://activity, agent-hook), padrão já comprovado no Alethe pelo sidebar/Token HUD.
+Agentes (preservar a suite OpenCode): o princípio Alethe correto é "não duplicar a lógica interna do agente — gerenciar o que os agentes compartilham" (CLIs, MCP, skills, sessões). Concretamente para o HATI: spawn em PTY + --resume + hooks/ponte de estado (padrão AG-08) é o mínimo; ir além (app-server do OpenCode, eventos nativos, servidor embutido) é a oportunidade de diferenciação que o Alethe deixou em 0%. Requisito direto: o HATI deve nascer com o bridge de estado OpenCode, não como remendo (o comentário do opencode_bridge.rs admite que a heurística genérica de PTY "não funciona" para OpenCode — o Alethe aprendeu isso na prática).
+Usage: reutilizável como conceito: consentimento por provedor (US-09), cache compartilhado com cadência única, janelas normalizadas "worst window". Frágil: scraping OAuth/interno (US-01/02/03). Melhorável: fontes locais primeiro (US-04/05 como base), interface UsageProvider plugável, e exposição do dado onde a decisão acontece (o padrão "fitness em toda resposta de ferramenta" do OR-09 é a ideia mais sofisticada do Alethe em todo o repositório).
+Mobile: hoje = LAN read-mostly sem TLS + modo Tailscale como escape. Para HATI fora-de-casa: herdar o modelo de pareamento/limites/opt-ins (RC-02/03/06) e trocar o transporte por TLS sobre túnel gerenciado; arquitetura de eventos (hub publicando pty_output/resize/exit) já é a forma correta de alimentar um cliente remoto.
+Segurança — escolhas a NÃO reproduzir: segredos em JSON plaintext (PAT, Spotify, apiKey router9); remote sem TLS; update check sem opt-out; builds não assinados como estado "de produção"; Discord presence ligado por default; doc drift (PRIVACY vs código em CSP e usageAccess — o HATI deve gerar docs a partir de configs ou testá-las); desenvolvimento de hooks/instaladores ainda com issues de hardening abertas (#115/#123).
+Desempenho (Omarchy agora, Windows depois): atenção especial a: workaround WebKitGTK DMABUF (obrigatório no Linux, já mapeado); kill de grupo via setsid + ceifa de órfãos (o Windows Job Object não tem equivalente Linux — herdar o desenho todo); xterm WebGL com budget (e o bug #192 de reflow em split — investigar na implementação HATI, não herdar); scrollback em arquivo incremental (não reescrever); spawn com gate de memória e fila; e a lição do #205: verificar o comportamento de encerramento de processos contra systemd/sessão de usuário no Linux real antes de qualquer release.
+26. Funcionalidades essenciais recomendadas (ESSENCIAL)
+WS-01/03/04/12/17/18 · LY-01 · TM-01–07, 09–11, 17, 21, 23 · AG-01 (subconjunto: shell + opencode + codex + claude no mínimo), AG-04, AG-08 · US-04, US-09 · MC-01, MC-03 · AX-03 (base do Kanban), AX-16, AX-17, AX-18, AX-31 · RC-01/02/03/07 (com TLS)
+Originais do HATI (não existem no Alethe): Kanban por projeto com tarefas ligadas a agentes/sessões; monitoramento de limites unificado local-first; acesso remoto seguro fora de casa.
+27. Funcionais recomendadas (RECOMENDADO)
+WS-02/07/19/20 · LY-02 · TM-08/12/15/16/25 · AG-02/03/05/07/13 · US-01/02/05/06/10 · MC-02/04/05/08 · PL-02/06/08 · GT-01/02/05/06 · AX-01/04/05/14/15/20/23/24/25/26/28/29/30 · RC-05/06
+28. Funcionais problemáticas (QUESTIONÁVEL/DESACONSELHADO)
+- DESACONSELHADAS p/ HATI: TM-22 (Ghostty macOS), AX-12/13 (Spotify/Discord — scope creep), RC-04 (transporte sem TLS como produto), OR-14 (manter duas orquestrações desconectadas — o próprio Alethe registra a confusão), AX-22 (cloud sync 1ª parte contraria o perfil auto-hospedado do usuário).
+- QUESTIONÁVEIS (decisão humana necessária): OR-01–08/11/13 (orquestração profunda multi-vendor: maior risco/custo do catálogo, e o diferencial do Alethe — mas o HATI pode preferir focar no fluxo humano+Kanban com OpenCode), AG-06 (handoff com redação best-effort), WS-16/AG-16 (sandboxes experimentais), GT-08/09 (Merge Center), AX-07 (navegador embutido/CDP), AX-08 (Graphify), AX-09 (AI Memory), AG-12 (9router), WS-13 (escrever AGENTS.md no repo do usuário — efeito colateral questionável), US-03 (API interna Google).
+- Verificar antes de decidir: AX-10 (voz local: valor real, custo alto), WS-21/LY-04–06 (custom grid), WS-06 (flat mode), AX-02 (Pomodoro).
+29. Riscos e limitações relevantes (do Alethe, transferíveis como alerta)
+1. AGPL-3.0: qualquer cópia de código/estrutura derivada contamina o HATI — auditoria anti-plágio no processo do HATI.
+2. Linux é o platform mais frágil do Alethe (confessado: "Windows is the most tested platform"; issues #205/#192/#111; roadmap "Broader Linux validation") — exatamente a plataforma primária do usuário. O HATI Linux-first deve tratar o Linux como plataforma de primeira classe com CI/E2E próprios.
+3. Protocolos de agentes mudam rápido e divergem da documentação (lição repetida do roadmap) — orçamento de manutenção contínua por integração.
+4. Scraping de usage é frágil (issues #272; APIs internas/beta).
+5. God-object de estado / serialização integral — armadilha conhecida; evitar desde o design HATI.
+6. Doc drift (PRIVACY vs código) — tratar docs como artefatos testáveis.
+7. Plataforma de plugins sem sandbox real — se o HATI adotar plugins, decidir isolamento cedo (child webview) ou declarar o limite.
+8. Processo com sinais de desenvolvimento por IA sem curadoria total (arquivos perdidos, handoffs em docs permanentes, RFCs não formalizadas) — o HATI deve formalizar ADRs desde o início.
+30. Oportunidades de diferenciação do HATI
+1. OpenCode como cidadão de primeira classe — o Alethe trata OpenCode como PTY+plugin raso (orquestração 0%); o HATI nasce de uma suite OpenCode (Athena/Forge/Pixel/Atlas/Probe/Sentinel/Aegis) e pode integrar server/app nativo, eventos, sessões e métricas nativamente.
+2. Kanban nativo por projeto — inexistente no Alethe; é a peça central declarada do HATI (tarefas ↔ agentes ↔ sessões ↔ limites).
+3. Mobile seguro fora de casa — o Alethe estacionou no "LAN confiável"; TLS+sobre-túnel com o mesmo modelo de consentimentos é o salto natural.
+4. Linux/Omarchy-first — validação real em Wayland/Hyprland, estética Omarchy (o modo "Clean" do Alethe prova a demanda por densidade minimalista), CI Linux de verdade.
+5. Usage local-first — banco local + relatórios nativos dos CLIs antes de qualquer scraping; limites como dado de primeira classe no Kanban (ex.: cartão bloqueado porque o provedor esgotou).
+6. Guardas Git humanos por design — commits/pushes fora da superfície automatizável (o Alethe expõe; o HATI pode nascer com a política da Agent Suite embutida no produto).
+31. Questões que exigem decisão humana (para a próxima fase)
+1. Escopo do núcleo MVP: confirmar o conjunto ESSENCIAL (§26) como o alvo da primeira etapa de planejamento arquitetural, ou alterá-lo.
+2. Orquestração: incluir workers/headless multi-vendor (custo máximo) ou manter HATI como "cockpit humano" com spawn/resume/monitoramento e deixar orquestração para fase futura via skill/MCP (como o alethe-orchestrate)?
+3. Persistência: JSON versionado à la Alethe vs. SQLite local para tarefas/sessões/métricas (com JSON só para preferências) — decisão técnica central que condiciona o Kanban.
+4. Acesso remoto: túnel gerenciado (Tailscale) vs. proxy HTTPS próprio vs. relay — e o grau de input permitido no celular.
+5. Plugins: o HATI terá sistema de plugins no escopo? (Se sim, decidir isolamento real cedo; se não, features são built-in e o produto simplifica.)
+6. Integração OpenCode: profundidade desejada (PTY+bridge vs. integração de protocolo nativo) — afeta diretamente como as tarefas do Kanban "conversam" com os agentes da suite.
+7. Agentes suportados na v1: subconjunto (shell/opencode/codex/claude) vs. matriz ampla desde o início.
+8. Identidade visual: a imagem de referência do usuário (a ser fornecida) + estética Omarchy — como isso converte em tokens/temas (o modelo de tokens sanitizados do AleTHE em PL-08 é a mecânica, a identidade será original).
+Encerramento da auditoria (síntese)
+1. O que o Alethe realmente oferece: um workspace local-first de produção real (v1.7.0, ~4 meses) com PTYs robustos e persistentes, projetos/grupos/layouts, 14+ agentes com integração profunda em Claude/Codex e rasa no resto, gestão segura de MCP/skills, plugins com catálogo, Git/worktrees/PR com guardas, usage por provedor, orquestração multi-vendor em estágio avançado-porém-parcial, e remote LAN para celular.
+2. Como a arquitetura funciona: Tauri 2 = React/TS (Zustand único persistido) ↔ ~270 comandos IPC ↔ Rust (PTYs em HashMap global, scrollback em arquivo incremental, eventos em lote, listener HTTP loopback para hooks dos agentes, segundo servidor HTTP/WS para remote); processos externos são os próprios CLIs; persistência JSON atômica versionada por perfil.
+3. Pontos fortes: backend Rust de qualidade sênior (concorrência, atomicidade, invariantes testados), design de consentimentos/limites (remote, usage, MCP, plugins), honestidade técnica excepcional (limites admitidos em docs), autoauditoria interna, cultura empírica contra os CLIs reais.
+4. Limitações: Linux/macOS subvalidados (com bugs sérios no Linux), segredos plaintext, remote sem TLS, god-object de estado/serialização integral, orquestração duplicada/confusa, OpenCode raso, sem Kanban, cobertura de testes de UI baixa, docs com drift.
+5. Parecem indispensáveis ao HATI: PTYs persistentes com scrollback + resume; projetos/containers; sub-abas; MCP seguro multi-agente; consentimento de usage; o modelo de limites do remote; i18n tipado; atalhos/command palette; bridge de estado OpenCode.
+6. Exigem maior investigação na fase de design do HATI: protocolo headless do OpenCode (server/app), comportamento Wayland/Hyprland do backend de PTY escolhido, TLS sobre túnel para mobile, formato de persistência para Kanban, e a superfície exata de automação Git a expor.
+7. A discutir antes de aprovar escopo: as 8 questões do §31.
+Estado das verificações desta auditoria: investigação 100% somente leitura via GitHub (API + raw), sem clone, sem execução de código de terceiros, sem escrita de arquivos, sem operações Git de qualquer espécie, sem delegação a agentes de implementação. Todas as afirmações de implementação citam arquivo/módulo verificável no commit f09c597; limitações registradas onde a inspeção não foi possível (ex.: comportamento em runtime, cobertura exata de testes, segunda página de issues) estão marcadas como hipóteses ou pendências.
+Pauso aqui. Nada foi implementado, nenhum arquivo foi criado, nenhuma decisão arquitetural do HATI foi tomada. Aguardo a seleção humana das funcionalidades (item a item, usando os IDs do catálogo) e as respostas às questões do §31 antes de qualquer planejamento arquitetural definitivo.

@@ -1,0 +1,96 @@
+{
+  "package_name": "HATI_Contexto_Mestre_SEM_PROMPT",
+  "version": "1.1",
+  "date_base": "2026-10-14",
+  "root_layout": "extract contents into HATI repository root",
+  "counts": {
+    "MELHORAR": 112,
+    "MANTER": 44,
+    "ADIAR": 25,
+    "DESCARTAR": 6
+  },
+  "ids": 187,
+  "source_audit_ids": 161,
+  "hati_exclusive_ids": 26,
+  "directives_dt": 10,
+  "source_audit_sha256": "1d04d8c90e94b96fcf3549456feab15ca9f64b87d4d65b36a0b02a1794328ae8",
+  "files": [
+    {
+      "path": "HATI_CONTEXT_INSTRUCOES.md",
+      "size": 2128,
+      "sha256": "cb2861639050807bae33e1b9d1003133182ed7c17b5c3f674c2dbca110f1d255"
+    },
+    {
+      "path": "docs/hati-context/README.md",
+      "size": 1845,
+      "sha256": "5f894699cbf1ebce561627f325c80f9c74f30a702bee9331ffcc831ba5d014a8"
+    },
+    {
+      "path": "docs/hati-context/architecture/CROSS_REVIEW.md",
+      "size": 4752,
+      "sha256": "9a412ad58bea256e3fd3f0966b3c647206b1e6e63c2d83b3771d04f6fcbf99f1"
+    },
+    {
+      "path": "docs/hati-context/architecture/OPEN_QUESTIONS.md",
+      "size": 2080,
+      "sha256": "2fb3aa191b2619c5b6e48fc82c576651637d6766b3111e9835619d7e122573fb"
+    },
+    {
+      "path": "docs/hati-context/assets/brand/RUNA_REFERENCIA_USUARIO.jpeg",
+      "size": 9064,
+      "sha256": "8adb291528703b1f49e0eed59e9d3f2f5d537c27d60e93ee1d904af188541245"
+    },
+    {
+      "path": "docs/hati-context/governance/DIRECTIVES_DT.md",
+      "size": 2588,
+      "sha256": "b6ab610b05d4b5ff53d370e25f06950149e74422d28b5d7c106b1b15059bb263"
+    },
+    {
+      "path": "docs/hati-context/governance/PRODUCT_PRINCIPLES.md",
+      "size": 2228,
+      "sha256": "14bed06f73a87074bb67af98b1310b4b3c53e059b5dbfe6e9f948dc2a0d20263"
+    },
+    {
+      "path": "docs/hati-context/governance/PROVENANCE_AND_PRIORITY.md",
+      "size": 1695,
+      "sha256": "359dd10b8397a33fc7cfe0d3a05136731fd60977175f81e0980f5186e5d64ead"
+    },
+    {
+      "path": "docs/hati-context/scope/DECISIONS.json",
+      "size": 95806,
+      "sha256": "3987830709cda9417f3e842fd95c520ca5fb85af83cc26cdae566d9746d6a9bb"
+    },
+    {
+      "path": "docs/hati-context/scope/HX_REQUIREMENTS.md",
+      "size": 7797,
+      "sha256": "594fb87113b527be16e5e4979c0faeaa5c42d63ec6eadc0a6145b281fe7ed6b4"
+    },
+    {
+      "path": "docs/hati-context/scope/SCOPE_MATRIX.md",
+      "size": 31346,
+      "sha256": "af23eebc4cd7c03e401cc4fcba3cb75bd7fcaca9a3a3ad33c8f95cdf4b3c95d2"
+    },
+    {
+      "path": "docs/hati-context/source/ALETHE_AUDIT_ORIGINAL.txt",
+      "size": 59355,
+      "sha256": "1d04d8c90e94b96fcf3549456feab15ca9f64b87d4d65b36a0b02a1794328ae8"
+    },
+    {
+      "path": "docs/hati-context/workflow/AI_PORTABILITY.md",
+      "size": 1936,
+      "sha256": "72279bc3860af65d4a2229ba3e71a7a5247184a072a28560e6d206f4c5cd8b45"
+    },
+    {
+      "path": "docs/hati-context/workflow/CURRENT_STATUS.md",
+      "size": 1116,
+      "sha256": "dba159e99351a917c394c1d736b5135887c90f4deebdd497a6454cead1f1a5bf"
+    },
+    {
+      "path": "docs/hati-context/workflow/SESSION_HANDOFF_TEMPLATE.md",
+      "size": 1139,
+      "sha256": "b88232d56ff74f9d24895336340359bc9e278332eb116ffeeaa4a4e5d312a1c5"
+    }
+  ],
+  "prompt_included": false,
+  "execution_requirement": "none; documentation-only source package"
+}
