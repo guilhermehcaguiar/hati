@@ -4,7 +4,7 @@
 > nativa de leitura nesta máquina; o que não foi verificado está declarado como tal.
 
 **Data-base deste registro:** 14/10/2026 (fundação documental — Prompt 02; materialização
-física — Prompt 02B).
+física — Prompt 02B); atualizado em 15/10/2026 (Prompt 03 — proposta arquitetural).
 
 ## 1. Verificado por inspeção (leitura nativa, sem comandos)
 
@@ -29,6 +29,18 @@ física — Prompt 02B).
   `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`,
   `docs/CURRENT_STATUS.md`, `docs/HANDOFF.md`, `docs/decisions/README.md`,
   `docs/reference/SCOPE_MATRIX.md`, `docs/reference/ALETHE_AUDIT.md`.
+- **17 arquivos de proposta arquitetural criados em 15/10/2026 (Prompt 03 — Athena,
+  sem shell para escrita; ferramenta nativa de escrita; verificados por listagem e grep):**
+  `docs/architecture/TECHNICAL_STUDY.md` (14 questões respondidas + apêndices),
+  `SYSTEM_DESIGN.md`, `DATA_MODEL.md`, `AGENT_INTEGRATIONS.md`,
+  `SECURITY_AND_RUNTIME.md`, `VALIDATION_PLAN.md` (6 arquivos; 1.633 linhas somadas) e
+  `docs/decisions/proposals/` (README + ADR-001..010, todos com status **proposta**;
+  425 linhas somadas). Total: 2.058 linhas. **Nenhum é decisão aprovada.**
+- **Pesquisa externa do Prompt 03 (14–15/10/2026):** documentação oficial consultada por
+  fetch direto (OpenCode server/plugins/ACP/v2, Codex app-server/SDK/hooks, Claude Code
+  headless/hooks/Agent SDK, Tauri 2, Electron, systemd/loginctl 262, gitoxide, libgit2,
+  rusqlite, MCP spec 2026-07-28, Tailscale, xterm.js). Busca web da sessão indisponível
+  (cancelada) — ver Apêndice B do TECHNICAL_STUDY. Nenhuma PoC executada (proibida).
 
 ## 2. NÃO verificado (sem shell nesta fase, por decisão do usuário)
 
@@ -71,8 +83,10 @@ Checklist de gravação (concluído em 14/10/2026 — Prompt 02B):
    executam Git de escrita.
 4. Licença do HATI — indefinida; decisão humana futura.
 5. Identidade visual final (tipografia, logo, tokens) — apenas a referência da runa existe.
-6. Arquitetura (Prompt 03) — **aguardando revisão humana da fundação documental**; as 14
-   questões abertas estão em `docs/ARCHITECTURE.md` §3.
+6. Arquitetura (Prompt 03) — **proposta produzida** (15/10/2026): 14 questões abertas
+   respondidas em `docs/architecture/TECHNICAL_STUDY.md`, com 10 ADRs propostos em
+   `docs/decisions/proposals/` (nenhum aprovado). **Aguarda revisão e decisão humanas.**
+   Pendência técnica registrada: contratos da OpenCode v2 a re-verificar na PoC-02.
 7. Roadmap em `docs/ROADMAP.md` é **proposta** — requer aprovação/ajuste humanos.
 
 ## 5. Próximo passo
@@ -80,7 +94,11 @@ Checklist de gravação (concluído em 14/10/2026 — Prompt 02B):
 1. Revisão humana da fundação documental (14 documentos materializados em disco).
 2. Fornecimento do `HATI_PROMPT_02_ATHENA.md` original (ausente no disco).
 3. Versionamento Git — decisão e execução humanas.
-4. Prompt 03: estudo comparativo de arquitetura com ADRs propostos — sem implementação.
+4. **Revisão humana da proposta arquitetural do Prompt 03**: TECHNICAL_STUDY.md (14
+   questões), SYSTEM_DESIGN, DATA_MODEL, AGENT_INTEGRATIONS, SECURITY_AND_RUNTIME,
+   VALIDATION_PLAN e ADR-001..010 (propostas). Aprovações por ADR individual; depois,
+   autorização das PoCs (PoC-01/02/03/04/06) como etapa futura própria — a transição
+   Fase 0→1 está descrita em `docs/architecture/VALIDATION_PLAN.md` §6.
 
 ## 6. Regra de manutenção
 

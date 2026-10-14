@@ -37,6 +37,39 @@
 
 ### Histórico
 
+- **2026-10-15 — Athena (Prompt 03, proposta arquitetural, COM fetch externo de
+  documentação; SEM shell de escrita; SEM implementação).**
+  - Objetivo autorizado: pesquisa, comparação e planejamento da arquitetura técnica —
+    responder as 14 questões abertas, produzir proposta arquitetural + ADRs **proposta**
+    em `docs/architecture/` e `docs/decisions/proposals/`; sem código, sem PoCs, sem
+    commits, sem delegação.
+  - Documentos lidos: 16 do pacote `docs/hati-context/` + 14 canônicos (integralmente).
+  - Estado real verificado no início: repositório só com documentação; `docs/architecture/`
+    e `docs/decisions/proposals/` não existiam.
+  - Trabalho: 17 arquivos criados via ferramenta nativa de escrita (`write`/`edit`):
+    TECHNICAL_STUDY (14 questões, cada uma com os 10 elementos exigidos + 2 apêndices),
+    SYSTEM_DESIGN, DATA_MODEL, AGENT_INTEGRATIONS, SECURITY_AND_RUNTIME, VALIDATION_PLAN,
+    README + ADR-001..010 (status proposta). Pesquisa externa por fetch direto em docs
+    oficiais (OpenCode, Codex, Claude Code, Tauri, Electron, systemd/loginctl, gitoxide,
+    libgit2, rusqlite, MCP, Tailscale, xterm.js). `CURRENT_STATUS.md` e este handoff
+    atualizados.
+  - Verificações EXECUTADAS: listagem pós-gravação (17 arquivos presentes; 2.058 linhas);
+    grep dos cabeçalhos Q1..Q14 (14 presentes); leitura de confirmação pós-edição.
+  - Verificações NÃO executadas: PoCs (proibidas nesta etapa); recomputação de hashes do
+    MANIFEST.json; estado Git (não verificado por agente).
+  - Incertezas e riscos: contratos da OpenCode v2 (anunciada durante a pesquisa) exigem
+    re-verificação na PoC-02; busca web indisponível (evidências = docs oficiais diretas);
+    WebKitGTK/xterm não validado sem PoC-06; números de consumo citados são os declarados
+    pelos fornecedores.
+  - Pendências: revisão humana da proposta e dos ADRs (individual); autorização das PoCs
+    como etapa futura; `HATI_PROMPT_02_ATHENA.md` original; versionamento Git humano;
+    licença do HATI; identidade visual.
+  - Próxima ação recomendada: revisar TECHNICAL_STUDY.md + ADRs; aprovar/reprovar por ADR;
+    autorizar PoC-01/02/03/04/06 (ver VALIDATION_PLAN §6).
+  - Aprovações humanas necessárias: ADR-001..010 (nenhum aprovado); ajustes de roadmap
+    (Q13 — ROADMAP.md permanece intocado); políticas de linger/assinatura/distribuição.
+  - Git: nenhuma operação de escrita executada.
+
 - **2026-10-14 — Forge (Prompt 02B, materialização documental, SEM SHELL).**
   - Objetivo autorizado: criar fisicamente os 14 documentos da fundação documental —
     sem implementação, sem Git de escrita, sem alterar o pacote `docs/hati-context/`.
